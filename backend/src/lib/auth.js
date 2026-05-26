@@ -27,6 +27,7 @@ export function createApiKeyAuth({
   supabaseClient = null,
   usageRecorder = recordMerchantApiUsage,
   verifyGatewaySignature = verifyApiGatewayRequestSignature,
+  requireSignature = false,
 } = {}) {
   return async function requireApiKeyAuth(req, res, next) {
     try {
@@ -60,6 +61,14 @@ export function createApiKeyAuth({
         typeof signatureHeader === "string" && signatureHeader.trim().startsWith("sha256=");
       const hasTimestampHeader = typeof timestampHeader === "string" && timestampHeader.trim().length > 0;
       const signatureProvided = hasSignatureHeader && hasTimestampHeader;
+
+      if (requireSignature && !signatureProvided) {
+        return res.status(401).json({
+          error: "Missing required API gateway signature headers",
+          code: "API_SIGNATURE_REQUIRED",
+        });
+      }
+
       if (signatureProvided) {
         const signatureResult = verifyGatewaySignature({
           secret: apiKey,

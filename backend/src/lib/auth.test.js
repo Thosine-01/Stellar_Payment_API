@@ -207,6 +207,62 @@ describe("createApiKeyAuth", () => {
     expect(from).not.toHaveBeenCalled();
   });
 
+  it("requires signature headers when the middleware is configured for signed requests", async () => {
+    middleware = createApiKeyAuth({
+      supabaseClient,
+      usageRecorder,
+      verifyGatewaySignature,
+      requireSignature: true,
+    });
+    const req = createRequest({ "x-api-key": "signed-api-key" });
+
+    await middleware(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "Missing required API gateway signature headers",
+      code: "API_SIGNATURE_REQUIRED",
+    });
+    expect(verifyGatewaySignature).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("accepts a signed request when signed auth is required", async () => {
+    middleware = createApiKeyAuth({
+      supabaseClient,
+      usageRecorder,
+      verifyGatewaySignature,
+      requireSignature: true,
+    });
+    const merchant = {
+      id: "merchant-123",
+      email: "merchant@example.com",
+      business_name: "Merchant Co",
+      notification_email: "ops@example.com",
+    };
+    maybeSingle.mockResolvedValue({ data: merchant, error: null });
+    const req = {
+      method: "POST",
+      originalUrl: "/api/merchants/rotate-api-key",
+      body: { grace_period_hours: 24 },
+      get(name) {
+        const headers = {
+          "x-api-key": "signed-api-key",
+          "x-api-signature": "sha256=abcd",
+          "x-api-timestamp": "1713916800",
+        };
+        return headers[String(name).toLowerCase()];
+      },
+    };
+
+    await middleware(req, res, next);
+
+    expect(verifyGatewaySignature).toHaveBeenCalledTimes(1);
+    expect(req.merchant).toEqual(merchant);
+    expect(next).toHaveBeenCalledWith();
+  });
+
   it("does not enforce signature verification when signature headers are absent", async () => {
     const merchant = {
       id: "merchant-123",

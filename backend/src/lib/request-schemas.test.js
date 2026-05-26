@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import {
 
   MINIMUM_XLM_PAYMENT_AMOUNT,
+  pathPaymentQuoteQuerySchema,
   paymentZodSchema,
   paymentSessionZodSchema,
   registerMerchantZodSchema,
@@ -370,5 +371,65 @@ describe("v2PaymentSessionSchema", () => {
     ).toThrowError(
       "memo must be a valid unsigned 64-bit integer or a 32-byte hex string (64 characters) when memo_type is return"
     );
+  });
+});
+
+describe("pathPaymentQuoteQuerySchema", () => {
+  const assetIssuer =
+    "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+  const sourceAccount = assetIssuer;
+
+  it("parses a valid native source asset quote request", () => {
+    const result = pathPaymentQuoteQuerySchema.parse({
+      source_asset: "xlm",
+      source_account: sourceAccount,
+    });
+
+    expect(result).toEqual({
+      source_asset: "XLM",
+      source_account: sourceAccount,
+    });
+  });
+
+  it("requires source_asset_issuer for non-native source assets", () => {
+    expect(() =>
+      pathPaymentQuoteQuerySchema.parse({
+        source_asset: "USDC",
+        source_account: sourceAccount,
+      }),
+    ).toThrowError("source_asset_issuer is required for non-native source assets");
+  });
+
+  it("rejects invalid source accounts", () => {
+    expect(() =>
+      pathPaymentQuoteQuerySchema.parse({
+        source_asset: "XLM",
+        source_account: "not-a-stellar-account",
+      }),
+    ).toThrowError("source_account must be a valid Stellar public key");
+  });
+
+  it("rejects source asset issuers for native XLM", () => {
+    expect(() =>
+      pathPaymentQuoteQuerySchema.parse({
+        source_asset: "XLM",
+        source_asset_issuer: assetIssuer,
+        source_account: sourceAccount,
+      }),
+    ).toThrowError("source_asset_issuer must not be provided for native XLM");
+  });
+
+  it("accepts valid non-native source assets", () => {
+    const result = pathPaymentQuoteQuerySchema.parse({
+      source_asset: "USDC",
+      source_asset_issuer: assetIssuer,
+      source_account: sourceAccount,
+    });
+
+    expect(result).toEqual({
+      source_asset: "USDC",
+      source_asset_issuer: assetIssuer,
+      source_account: sourceAccount,
+    });
   });
 });

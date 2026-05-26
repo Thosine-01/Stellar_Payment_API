@@ -1167,6 +1167,13 @@ function createPaymentsRouter({
           return res.status(404).json({ error: "Payment not found" });
         }
 
+        if (data.status !== "pending") {
+          return res.status(409).json({
+            error: "Path payment quote is only available for pending payments",
+            status: data.status,
+          });
+        }
+
         const sameAsset =
           sourceAsset.toUpperCase() === data.asset.toUpperCase() &&
           sourceAssetIssuer === (data.asset_issuer || null);

@@ -9,9 +9,13 @@ vi.mock("redis", () => ({
 }));
 
 import {
+  createMerchantSecurityActionRateLimit,
   createRedisRateLimitStore,
   createVerifyPaymentRateLimit,
+  getMerchantSecurityActionRateLimitKey,
   getVerifyPaymentRateLimitKey,
+  MERCHANT_SECURITY_ACTION_RATE_LIMIT_MAX,
+  MERCHANT_SECURITY_ACTION_RATE_LIMIT_WINDOW_MS,
   RATE_LIMIT_REDIS_PREFIX,
   VERIFY_PAYMENT_RATE_LIMIT_MAX,
   VERIFY_PAYMENT_RATE_LIMIT_WINDOW_MS,
@@ -98,6 +102,51 @@ describe("getVerifyPaymentRateLimitKey", () => {
         ip: "203.0.113.10",
       }),
     ).toBe("payment-123:ip:203.0.113.10");
+  });
+});
+
+describe("createMerchantSecurityActionRateLimit", () => {
+  it("passes the merchant security action config into express-rate-limit", () => {
+    const store = { kind: "redis-store" };
+    const middleware = vi.fn();
+    const rateLimitFactory = vi.fn(() => middleware);
+
+    const result = createMerchantSecurityActionRateLimit({ store, rateLimitFactory });
+
+    expect(result).toBe(middleware);
+    expect(rateLimitFactory).toHaveBeenCalledWith({
+      windowMs: MERCHANT_SECURITY_ACTION_RATE_LIMIT_WINDOW_MS,
+      max: MERCHANT_SECURITY_ACTION_RATE_LIMIT_MAX,
+      message: { error: "Too many sensitive merchant actions, please try again later." },
+      standardHeaders: true,
+      legacyHeaders: false,
+      validate: { ip: false },
+      keyGenerator: expect.any(Function),
+      requestWasSuccessful: expect.any(Function),
+      store,
+      passOnStoreError: true,
+    });
+  });
+});
+
+describe("getMerchantSecurityActionRateLimitKey", () => {
+  it("uses merchant ids when available", () => {
+    expect(
+      getMerchantSecurityActionRateLimitKey({
+        merchant: { id: "merchant-456" },
+        headers: {},
+        ip: "203.0.113.10",
+      }),
+    ).toBe("merchant:merchant-456");
+  });
+
+  it("hashes api keys when merchant context is unavailable", () => {
+    expect(
+      getMerchantSecurityActionRateLimitKey({
+        headers: { "x-api-key": "issuer-secret-key" },
+        ip: "203.0.113.10",
+      }),
+    ).toMatch(/^api:[a-f0-9]{64}$/);
   });
 });
 
