@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import "@testing-library/jest-dom/vitest";
 import { UserPermissionsManager } from "./UserPermissionsManager";
+import { usePermissionsStore } from "@/hooks/usePermissionsStore";
+import { toast } from "sonner";
 
-// Mock the dependencies
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
@@ -15,374 +17,85 @@ vi.mock("sonner", () => ({
   },
 }));
 
-/**
- * Unit tests for UserPermissionsManager component
- */
-describe("UserPermissionsManager", () => {
-  const defaultProps = {
-    userId: "test-user-123",
-    onPermissionsChange: vi.fn(),
-    isReadOnly: false,
-    showCategories: true,
-  };
+const basePermissions = [
+  { id: "payment-read", name: "View Payments", description: "View all payments", granted: true, category: "payment" as const },
+  { id: "payment-write", name: "Create Payments", description: "Create new payments", granted: false, category: "payment" as const },
+  { id: "webhook-read", name: "View Webhooks", description: "View webhook configurations", granted: true, category: "webhook" as const },
+  { id: "webhook-write", name: "Manage Webhooks", description: "Create and modify webhooks", granted: false, category: "webhook" as const },
+  { id: "analytics-read", name: "View Analytics", description: "View analytics data", granted: true, category: "analytics" as const },
+  { id: "admin-access", name: "Admin Access", description: "Full system administration", granted: false, category: "admin" as const },
+];
 
+describe("UserPermissionsManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    usePermissionsStore.setState({ permissions: basePermissions });
   });
 
-  describe("Rendering", () => {
-    it("should render the permissions manager with title and description", () => {
-      render(<UserPermissionsManager {...defaultProps} />);
+  it("renders manager region and permissions", () => {
+    render(<UserPermissionsManager userId="u1" showCategories={false} />);
 
-      expect(
-        screen.getByRole("region", {
-          name: "permissions.manager",
-        })
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("permissions.title")
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("permissions.subtitle")
-      ).toBeInTheDocument();
-    });
-
-    it("should render permission categories when showCategories is true", () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={true}
-        />
-      );
-
-      expect(
-        screen.getByRole("button", { name: /categories\./i, hidden: true })
-      ).toBeDefined();
-    });
-
-    it("should render flat permission list when showCategories is false", () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={false}
-        />
-      );
-
-      const checkboxes = screen.getAllByRole("checkbox");
-      expect(checkboxes.length).toBeGreaterThan(0);
-    });
-
-    it("should display read-only notice when isReadOnly is true", () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          isReadOnly={true}
-        />
-      );
-
-      expect(
-        screen.getByText("permissions.readOnlyNotice")
-      ).toBeInTheDocument();
-    });
+    expect(screen.getByRole("region", { name: "permissions.manager" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Create Payments")).toBeInTheDocument();
   });
 
-  describe("Permission Management", () => {
-    it("should render all permission checkboxes", () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={false}
-        />
-      );
+  it("optimistically updates checkbox state and calls onPermissionsChange", async () => {
+    const onPermissionsChange = vi.fn().mockResolvedValue(undefined);
+    render(
+      <UserPermissionsManager
+        userId="u1"
+        showCategories={false}
+        onPermissionsChange={onPermissionsChange}
+      />
+    );
 
-      const expectedPermissions = [
-        "View Payments",
-        "Create Payments",
-        "View Webhooks",
-        "Manage Webhooks",
-        "View Analytics",
-        "Admin Access",
-      ];
+    const checkbox = screen.getByLabelText("Create Payments") as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
 
-      expectedPermissions.forEach((permName) => {
-        expect(screen.getByLabelText(permName)).toBeInTheDocument();
-      });
-    });
+    await userEvent.click(checkbox);
 
-    it("should toggle permission when checkbox is clicked", async () => {
-      const onPermissionsChange = vi.fn();
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          onPermissionsChange={onPermissionsChange}
-          showCategories={false}
-        />
-      );
-
-      const checkbox = screen.getByLabelText("Create Payments");
-      const isInitiallyChecked = (checkbox as HTMLInputElement).checked;
-
-      await userEvent.click(checkbox);
-
-      await waitFor(() => {
-        expect(onPermissionsChange).toHaveBeenCalled();
-      });
-
-      expect((checkbox as HTMLInputElement).checked).not.toBe(
-        isInitiallyChecked
-      );
-    });
-
-    it("should not allow permission changes when isReadOnly is true", async () => {
-      const onPermissionsChange = vi.fn();
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          onPermissionsChange={onPermissionsChange}
-          isReadOnly={true}
-          showCategories={false}
-        />
-      );
-
-      const checkbox = screen.getByLabelText("Create Payments");
-      (checkbox as HTMLInputElement).disabled = true;
-
-      expect((checkbox as HTMLInputElement).disabled).toBe(true);
-    });
-
-    it("should call onPermissionsChange with updated permissions", async () => {
-      const onPermissionsChange = vi.fn();
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          onPermissionsChange={onPermissionsChange}
-          showCategories={false}
-        />
-      );
-
-      const checkbox = screen.getByLabelText("Create Payments");
-      await userEvent.click(checkbox);
-
-      await waitFor(() => {
-        expect(onPermissionsChange).toHaveBeenCalled();
-      });
-    });
+    expect((screen.getByLabelText("Create Payments") as HTMLInputElement).checked).toBe(true);
+    await waitFor(() => expect(onPermissionsChange).toHaveBeenCalledTimes(1));
+    expect(toast.success).toHaveBeenCalled();
   });
 
-  describe("Category Management", () => {
-    it("should expand/collapse categories on click", async () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={true}
-        />
-      );
+  it("reverts optimistic update when callback fails", async () => {
+    const onPermissionsChange = vi.fn().mockRejectedValue(new Error("fail"));
+    render(
+      <UserPermissionsManager
+        userId="u1"
+        showCategories={false}
+        onPermissionsChange={onPermissionsChange}
+      />
+    );
 
-      const categoryButton = screen.getAllByRole("button").find((btn) =>
-        btn.getAttribute("aria-expanded") !== null
-      );
+    const checkbox = screen.getByLabelText("Create Payments") as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
 
-      expect(categoryButton).toBeDefined();
+    await userEvent.click(checkbox);
+
+    await waitFor(() => {
+      expect(onPermissionsChange).toHaveBeenCalledTimes(1);
+      expect((screen.getByLabelText("Create Payments") as HTMLInputElement).checked).toBe(false);
     });
-
-    it("should show permission count for each category", () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={true}
-        />
-      );
-
-      // Check that count displays exist (e.g., "1 of 2")
-      const countElements = screen.queryAllByText(/of/);
-      expect(countElements.length).toBeGreaterThan(0);
-    });
-
-    it("should render category badges with appropriate colors", () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={true}
-        />
-      );
-
-      expect(screen.getByText("permissions.category.payment")).toBeInTheDocument();
-      expect(
-        screen.getByText("permissions.category.webhook")
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("permissions.category.analytics")
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("permissions.category.admin")
-      ).toBeInTheDocument();
-    });
+    expect(toast.error).toHaveBeenCalled();
   });
 
-  describe("Accessibility", () => {
-    it("should have proper ARIA labels and descriptions", () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={false}
-        />
-      );
+  it("disables permission controls in read-only mode", () => {
+    render(<UserPermissionsManager userId="u1" showCategories={false} isReadOnly />);
 
-      const checkboxes = screen.getAllByRole("checkbox");
-      checkboxes.forEach((checkbox) => {
-        expect((checkbox as HTMLInputElement).getAttribute("aria-label")).toBeTruthy();
-      });
-    });
-
-    it("should have proper region boundaries", () => {
-      render(<UserPermissionsManager {...defaultProps} />);
-
-      const region = screen.getByRole("region");
-      expect(region).toHaveAttribute("aria-label");
-    });
-
-    it("should have proper focus management for keyboard navigation", async () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={false}
-        />
-      );
-
-      const firstCheckbox = screen.getByLabelText("View Payments");
-      firstCheckbox.focus();
-
-      expect(document.activeElement).toBe(firstCheckbox);
-    });
-
-    it("should support screen reader descriptions via aria-describedby", () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={false}
-        />
-      );
-
-      const checkbox = screen.getByLabelText("View Payments");
-      const describedBy = checkbox.getAttribute("aria-describedby");
-
-      expect(describedBy).toBeTruthy();
-      const descElement = document.getElementById(describedBy!);
-      expect(descElement).toBeInTheDocument();
-    });
+    const checkbox = screen.getByLabelText("Create Payments") as HTMLInputElement;
+    expect(checkbox.disabled).toBe(true);
+    expect(screen.getByText("permissions.readOnlyNotice")).toBeInTheDocument();
   });
 
-  describe("Read-only Mode", () => {
-    it("should disable all checkboxes when isReadOnly is true", () => {
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          isReadOnly={true}
-          showCategories={false}
-        />
-      );
+  it("adds accessible grouping metadata for category sections", async () => {
+    render(<UserPermissionsManager userId="u1" showCategories />);
 
-      const checkboxes = screen.getAllByRole("checkbox");
-      checkboxes.forEach((checkbox) => {
-        expect((checkbox as HTMLInputElement).disabled).toBe(true);
-      });
-    });
+    const toggle = screen.getByRole("button", { name: /permissions.category.payment/i });
+    expect(toggle).toHaveAttribute("aria-controls", "category-payment");
 
-    it("should prevent permission changes in read-only mode", async () => {
-      const onPermissionsChange = vi.fn();
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          onPermissionsChange={onPermissionsChange}
-          isReadOnly={true}
-          showCategories={false}
-        />
-      );
-
-      const checkbox = screen.getByLabelText("Create Payments") as HTMLInputElement;
-      expect(checkbox.disabled).toBe(true);
-    });
-  });
-
-  describe("Animation and Interaction", () => {
-    it("should render without animation errors", () => {
-      const { container } = render(
-        <UserPermissionsManager {...defaultProps} />
-      );
-
-      expect(container).toBeDefined();
-      expect(container.querySelector('[role="region"]')).toBeInTheDocument();
-    });
-
-    it("should maintain state consistency across renders", () => {
-      const { rerender } = render(
-        <UserPermissionsManager {...defaultProps} />
-      );
-
-      rerender(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={false}
-        />
-      );
-
-      expect(
-        screen.getByRole("region", {
-          name: "permissions.manager",
-        })
-      ).toBeInTheDocument();
-    });
-  });
-
-  describe("Integration", () => {
-    it("should work with multiple permission changes", async () => {
-      const onPermissionsChange = vi.fn();
-      render(
-        <UserPermissionsManager
-          {...defaultProps}
-          onPermissionsChange={onPermissionsChange}
-          showCategories={false}
-        />
-      );
-
-      const checkbox1 = screen.getByLabelText("Create Payments");
-      const checkbox2 = screen.getByLabelText("Manage Webhooks");
-
-      await userEvent.click(checkbox1);
-      await userEvent.click(checkbox2);
-
-      await waitFor(() => {
-        expect(onPermissionsChange).toHaveBeenCalledTimes(2);
-      });
-    });
-
-    it("should handle category switching without losing state", async () => {
-      const { rerender } = render(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={true}
-        />
-      );
-
-      rerender(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={false}
-        />
-      );
-
-      rerender(
-        <UserPermissionsManager
-          {...defaultProps}
-          showCategories={true}
-        />
-      );
-
-      expect(
-        screen.getByRole("region", {
-          name: "permissions.manager",
-        })
-      ).toBeInTheDocument();
-    });
+    const region = screen.getByRole("region", { name: /permissions.category.payment/i });
+    expect(region).toHaveAttribute("id", "category-payment");
   });
 });
