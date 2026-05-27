@@ -1,22 +1,10 @@
 "use client";
 
-import { motion, type Variants } from "framer-motion";
-import { useEffect } from "react";
-import confetti from "canvas-confetti";
-
-interface PaymentSuccessAnimationProps {
-  onComplete?: () => void;
-  className?: string;
-}
-
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useTranslations } from "next-intl";
 
-/**
- * Props for PaymentSuccessAnimation component
- */
 interface PaymentSuccessAnimationProps {
   show: boolean;
   onComplete?: () => void;
@@ -25,187 +13,33 @@ interface PaymentSuccessAnimationProps {
   txId?: string;
 }
 
-/**
- * Animation variants for the success container
- */
 const containerVariants: Variants = {
-  hidden: { opacity: 0, scale: 0.8 },
+  hidden: { opacity: 0, scale: 0.9 },
   visible: {
     opacity: 1,
     scale: 1,
     transition: {
-      type: "spring",
-      stiffness: 300,
-      damping: 20,
-      staggerChildren: 0.1,
-    },
-  },
-};
-
-const circleVariants: Variants = {
-  hidden: { pathLength: 0, opacity: 0 },
-  visible: {
-    pathLength: 1,
-    opacity: 1,
-    transition: {
-      duration: 0.6,
-      ease: "easeInOut",
-    },
-  },
-};
-
-const checkVariants: Variants = {
-  hidden: { pathLength: 0, opacity: 0 },
-  visible: {
-    pathLength: 1,
-    opacity: 1,
-    transition: {
       duration: 0.4,
-      ease: "easeOut",
-      delay: 0.3,
-    },
-  },
-};
-
-export function PaymentSuccessAnimation({ onComplete, className = "" }: PaymentSuccessAnimationProps) {
-  useEffect(() => {
-    // Fire brand-themed confetti
-    const duration = 2000;
-    const animationEnd = Date.now() + duration;
-    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
-
-    const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
-
-    const interval: NodeJS.Timeout = setInterval(() => {
-      const timeLeft = animationEnd - Date.now();
-
-      if (timeLeft <= 0) {
-        clearInterval(interval);
-        onComplete?.();
-        return;
-      }
-
-      const particleCount = 20 * (timeLeft / duration);
-      
-      // Use Pluto theme colors: steel blue, ice blue, and deep navy
-      confetti({
-        ...defaults,
-        particleCount,
-        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
-        colors: ["#4A6FA5", "#B8D4E8", "#0D1B2E"],
-      });
-      confetti({
-        ...defaults,
-        particleCount,
-        origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
-        colors: ["#4A6FA5", "#B8D4E8", "#0D1B2E"],
-      });
-    }, 250);
-
-    return () => clearInterval(interval);
-  }, [onComplete]);
-
-  return (
-    <motion.div
-      className={`flex flex-col items-center justify-center gap-4 ${className}`}
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-    >
-      <div className="relative h-24 w-24">
-        {/* Animated Background Pulse */}
-        <motion.div
-          className="absolute inset-0 rounded-full bg-[var(--pluto-100)]"
-          initial={{ scale: 0 }}
-          animate={{ scale: [1, 1.2, 1] }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-        />
-        
-        <svg
-          viewBox="0 0 100 100"
-          className="relative h-full w-full drop-shadow-[0_0_8px_rgba(74,111,165,0.3)]"
-        >
-          {/* Circle Outline */}
-          <motion.circle
-            cx="50"
-            cy="50"
-            r="45"
-            fill="none"
-            stroke="var(--pluto-500)"
-            strokeWidth="6"
-            strokeLinecap="round"
-            variants={circleVariants}
-          />
-          
-          {/* Checkmark */}
-          <motion.path
-            d="M30 50L45 65L70 35"
-            fill="none"
-            stroke="var(--pluto-500)"
-            strokeWidth="8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            variants={checkVariants}
-          />
-        </svg>
-      </div>
-      
-      <motion.div
-        className="text-center"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-      >
-        <h3 className="text-lg font-bold text-[var(--pluto-800)]">Payment Secured</h3>
-        <p className="text-sm text-[var(--pluto-600)]">Transaction verified on Stellar</p>
-      </motion.div>
-    </motion.div>
-  );
-}
-      duration: 0.5,
       ease: [0.16, 1, 0.3, 1],
-      staggerChildren: 0.1,
+      staggerChildren: 0.08,
     },
   },
   exit: {
     opacity: 0,
-    scale: 0.9,
-    transition: { duration: 0.3 },
+    scale: 0.95,
+    transition: { duration: 0.2 },
   },
 };
 
-/**
- * Animation variants for success elements
- */
-const successVariants: Variants = {
-  hidden: { opacity: 0, y: 20 },
+const childVariants: Variants = {
+  hidden: { opacity: 0, y: 12 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
   },
 };
 
-/**
- * Animation variants for confetti bursts
- */
-const confettiVariants: Variants = {
-  hidden: { scale: 0 },
-  visible: {
-    scale: 1,
-    transition: {
-      duration: 0.6,
-      ease: "easeOut",
-    },
-  },
-};
-
-/**
- * PaymentSuccessAnimation Component
- *
- * Displays a celebratory animation for successful payments with comprehensive
- * screen reader support and accessibility features.
- */
 export const PaymentSuccessAnimation: React.FC<PaymentSuccessAnimationProps> = ({
   show,
   onComplete,
@@ -214,73 +48,52 @@ export const PaymentSuccessAnimation: React.FC<PaymentSuccessAnimationProps> = (
   txId,
 }) => {
   const t = useTranslations();
-  const [hasAnnounced, setHasAnnounced] = useState(false);
-  const [confettiTriggered, setConfettiTriggered] = useState(false);
+  const hasTriggeredConfettiRef = useRef(false);
+  const completeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /**
-   * Trigger confetti animation
-   */
   useEffect(() => {
-    if (show && !confettiTriggered) {
-      setConfettiTriggered(true);
-
-      const duration = 3000;
-      const end = Date.now() + duration;
-
-      const frame = () => {
-        confetti({
-          particleCount: 7,
-          angle: 60,
-          spread: 70,
-          origin: { x: 0 },
-          colors: ["#00F5D4", "#6C5CE7", "#00D4AA"],
-        });
-        confetti({
-          particleCount: 7,
-          angle: 120,
-          spread: 70,
-          origin: { x: 1 },
-          colors: ["#00F5D4", "#6C5CE7", "#00D4AA"],
-        });
-
-        if (Date.now() < end) {
-          requestAnimationFrame(frame);
-        }
-      };
-
-      frame();
+    if (!show) {
+      hasTriggeredConfettiRef.current = false;
+      if (completeTimerRef.current) {
+        clearTimeout(completeTimerRef.current);
+        completeTimerRef.current = null;
+      }
+      return;
     }
-  }, [show, confettiTriggered]);
 
-  /**
-   * Handle completion and announcements
-   */
-  useEffect(() => {
-    if (show && !hasAnnounced) {
-      setHasAnnounced(true);
-
-      // Announce to screen readers
-      const announcement = t("payment.successAnnounce") ||
-        `Payment successful! ${amount} ${asset} has been received.`;
-
-      // Use a timeout to ensure the announcement is processed
-      setTimeout(() => {
-        setHasAnnounced(false); // Reset for next animation
-      }, 1000);
-
-      // Call onComplete after animation
-      setTimeout(() => {
-        onComplete?.();
-      }, 4000);
+    if (!hasTriggeredConfettiRef.current) {
+      hasTriggeredConfettiRef.current = true;
+      confetti({
+        particleCount: 140,
+        spread: 78,
+        startVelocity: 36,
+        origin: { y: 0.65 },
+        colors: ["#00F5D4", "#6C5CE7", "#00D4AA"],
+      });
     }
-  }, [show, hasAnnounced, onComplete, amount, asset, t]);
+
+    completeTimerRef.current = setTimeout(() => {
+      onComplete?.();
+    }, 4000);
+
+    return () => {
+      if (completeTimerRef.current) {
+        clearTimeout(completeTimerRef.current);
+        completeTimerRef.current = null;
+      }
+    };
+  }, [show, onComplete]);
 
   if (!show) return null;
+
+  const screenReaderMessage =
+    t("payment.successAnnounce") ||
+    `Payment successful! ${amount} ${asset} has been received.`;
 
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
@@ -290,118 +103,67 @@ export const PaymentSuccessAnimation: React.FC<PaymentSuccessAnimationProps> = (
         aria-labelledby="payment-success-title"
         aria-describedby="payment-success-description"
       >
-        {/* Screen reader announcement */}
-        <div
-          className="sr-only"
-          role="status"
-          aria-live="assertive"
-          aria-atomic="true"
-        >
-          {t("payment.successAnnounce") ||
-            `Payment successful! ${amount} ${asset} has been received.`}
+        <div className="sr-only" role="status" aria-live="assertive" aria-atomic="true">
+          {screenReaderMessage}
         </div>
 
         <motion.div
           className="relative w-full max-w-md overflow-hidden rounded-3xl border border-accent/30 bg-gradient-to-br from-black via-gray-900 to-black p-8 text-center shadow-2xl"
-          variants={successVariants}
+          variants={childVariants}
         >
-          {/* Close button */}
           <motion.button
             onClick={onComplete}
-            className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors z-10"
-            variants={successVariants}
+            className="absolute right-4 top-4 z-10 text-slate-500 transition-colors hover:text-white"
             aria-label={t("common.close") || "Close success animation"}
+            variants={childVariants}
           >
-            ✕
+            �
           </motion.button>
 
-          {/* Animated success icon */}
-          <motion.div
-            className="relative mb-6 flex h-20 w-20 items-center justify-center mx-auto"
-            variants={confettiVariants}
-          >
-            {/* Pulsing background */}
+          <motion.div className="relative mx-auto mb-6 flex h-20 w-20 items-center justify-center" variants={childVariants}>
             <motion.div
               className="absolute inset-0 rounded-full bg-accent/20"
-              animate={{
-                scale: [1, 1.2, 1],
-                opacity: [0.5, 1, 0.5],
-              }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
+              animate={{ scale: [1, 1.2, 1], opacity: [0.45, 0.95, 0.45] }}
+              transition={{ duration: 1.7, repeat: Infinity, ease: "easeInOut" }}
             />
-
-            {/* Check mark with bounce */}
             <motion.div
               className="relative z-10 text-4xl"
-              animate={{
-                scale: [0, 1.2, 1],
-                rotate: [0, 10, -10, 0],
-              }}
-              transition={{
-                duration: 0.8,
-                ease: "easeOut",
-              }}
+              animate={{ scale: [0.9, 1.12, 1], rotate: [0, 8, -8, 0] }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+              aria-hidden="true"
             >
-              ✅
+              ?
             </motion.div>
           </motion.div>
 
-          {/* Success title */}
           <motion.h1
             id="payment-success-title"
             className="mb-3 text-3xl font-bold tracking-tight text-white"
-            variants={successVariants}
+            variants={childVariants}
           >
             {t("payment.successTitle") || "Payment Successful!"}
           </motion.h1>
 
-          {/* Amount display */}
-          <motion.div
-            className="mb-4 rounded-xl bg-accent/10 p-4"
-            variants={successVariants}
-          >
-            <p className="text-sm text-slate-400 mb-1">
-              {t("payment.amountReceived") || "Amount Received"}
-            </p>
+          <motion.div className="mb-4 rounded-xl bg-accent/10 p-4" variants={childVariants}>
+            <p className="mb-1 text-sm text-slate-400">{t("payment.amountReceived") || "Amount Received"}</p>
             <p className="text-2xl font-bold text-accent">
               {amount} {asset}
             </p>
           </motion.div>
 
-          {/* Description */}
-          <motion.p
-            id="payment-success-description"
-            className="mb-6 text-slate-400"
-            variants={successVariants}
-          >
+          <motion.p id="payment-success-description" className="mb-6 text-slate-400" variants={childVariants}>
             {t("payment.successMessage") ||
               "Your payment has been processed successfully. The transaction is now confirmed on the Stellar network."}
           </motion.p>
 
-          {/* Transaction ID if provided */}
-          {txId && (
-            <motion.div
-              className="mb-6 p-3 rounded-lg bg-slate-800/50"
-              variants={successVariants}
-            >
-              <p className="text-xs text-slate-500 mb-1">
-                {t("payment.transactionId") || "Transaction ID"}
-              </p>
-              <p className="text-xs font-mono text-slate-300 break-all">
-                {txId}
-              </p>
+          {txId ? (
+            <motion.div className="mb-6 rounded-lg bg-slate-800/50 p-3" variants={childVariants}>
+              <p className="mb-1 text-xs text-slate-500">{t("payment.transactionId") || "Transaction ID"}</p>
+              <p className="break-all text-xs font-mono text-slate-300">{txId}</p>
             </motion.div>
-          )}
+          ) : null}
 
-          {/* Action buttons */}
-          <motion.div
-            className="flex w-full flex-col gap-3"
-            variants={successVariants}
-          >
+          <motion.div className="flex w-full flex-col gap-3" variants={childVariants}>
             <button
               onClick={onComplete}
               className="flex items-center justify-center rounded-xl bg-accent px-6 py-3 font-semibold text-black transition-all hover:bg-accent/90 focus:ring-2 focus:ring-accent/50"
@@ -411,11 +173,7 @@ export const PaymentSuccessAnimation: React.FC<PaymentSuccessAnimationProps> = (
             </button>
           </motion.div>
 
-          {/* Accessibility hint */}
-          <motion.p
-            className="sr-only"
-            variants={successVariants}
-          >
+          <motion.p className="sr-only" variants={childVariants}>
             {t("payment.successHint") ||
               "Press the continue button or close button to dismiss this success message."}
           </motion.p>

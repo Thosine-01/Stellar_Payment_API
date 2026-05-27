@@ -102,6 +102,10 @@ export const UserPermissionsManager: React.FC<UserPermissionsManagerProps> =
     const [expandedCategory, setExpandedCategory] = useState<string | null>(
       "payment"
     );
+    const [updatingPermissionIds, setUpdatingPermissionIds] = useState<string[]>(
+      []
+    );
+    const [liveMessage, setLiveMessage] = useState("");
 
     /**
      * Handle permission toggle with optimistic updates
@@ -112,6 +116,8 @@ export const UserPermissionsManager: React.FC<UserPermissionsManagerProps> =
           toast.error(t("permissions.readOnly") || "Read-only mode");
           return;
         }
+
+        setUpdatingPermissionIds((ids) => [...ids, permissionId]);
 
         // Optimistically update local state (Zustand update is synchronous)
         const previousPermission = permissions.find(p => p.id === permissionId);
@@ -126,6 +132,9 @@ export const UserPermissionsManager: React.FC<UserPermissionsManagerProps> =
           toast.success(
             t("permissions.updated") || "Permission updated successfully"
           );
+          setLiveMessage(
+            t("permissions.updated") || "Permission updated successfully"
+          );
         } catch (error) {
           // Revert optimistic update on error
           if (previousPermission) {
@@ -135,8 +144,13 @@ export const UserPermissionsManager: React.FC<UserPermissionsManagerProps> =
           toast.error(
             t("permissions.updateFailed") || "Failed to update permission. Please try again."
           );
+          setLiveMessage(
+            t("permissions.updateFailed") || "Failed to update permission. Please try again."
+          );
 
           console.error("Permission update failed:", error);
+        } finally {
+          setUpdatingPermissionIds((ids) => ids.filter((id) => id !== permissionId));
         }
       },
       [isReadOnly, permissions, togglePermission, onPermissionsChange, t]
@@ -192,6 +206,9 @@ export const UserPermissionsManager: React.FC<UserPermissionsManagerProps> =
         role="region"
         aria-label={t("permissions.manager") || "User Permissions Manager"}
       >
+        <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {liveMessage}
+        </div>
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-900">
             {t("permissions.title") || "Permissions"}
@@ -236,6 +253,7 @@ export const UserPermissionsManager: React.FC<UserPermissionsManagerProps> =
                         className="flex w-full items-center justify-between px-4 py-3 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                         aria-expanded={isExpanded}
                         aria-controls={`category-${category}`}
+                        id={`category-trigger-${category}`}
                       >
                         <div className="flex items-center gap-3">
                           <motion.div
@@ -291,6 +309,8 @@ export const UserPermissionsManager: React.FC<UserPermissionsManagerProps> =
                         {isExpanded && (
                           <motion.div
                             id={`category-${category}`}
+                            role="region"
+                            aria-labelledby={`category-trigger-${category}`}
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: "auto" }}
                             exit={{ opacity: 0, height: 0 }}
@@ -318,7 +338,10 @@ export const UserPermissionsManager: React.FC<UserPermissionsManagerProps> =
                                               permission.id
                                             )
                                           }
-                                          disabled={isReadOnly}
+                                          disabled={
+                                            isReadOnly || updatingPermissionIds.includes(permission.id)
+                                          }
+                                          aria-disabled={isReadOnly || updatingPermissionIds.includes(permission.id)}
                                           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
                                           aria-label={permission.name}
                                           aria-describedby={`desc-${permission.id}`}
@@ -333,6 +356,11 @@ export const UserPermissionsManager: React.FC<UserPermissionsManagerProps> =
                                           >
                                             {permission.description}
                                           </p>
+                                          {updatingPermissionIds.includes(permission.id) && (
+                                            <p className="sr-only">
+                                              {t("permissions.updating") || "Updating permission"}
+                                            </p>
+                                          )}
                                         </div>
                                       </label>
                                     </div>
@@ -381,7 +409,10 @@ export const UserPermissionsManager: React.FC<UserPermissionsManagerProps> =
                         type="checkbox"
                         checked={permission.granted}
                         onChange={() => handlePermissionChange(permission.id)}
-                        disabled={isReadOnly}
+                        disabled={
+                          isReadOnly || updatingPermissionIds.includes(permission.id)
+                        }
+                        aria-disabled={isReadOnly || updatingPermissionIds.includes(permission.id)}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
                         aria-label={permission.name}
                         aria-describedby={`desc-flat-${permission.id}`}
