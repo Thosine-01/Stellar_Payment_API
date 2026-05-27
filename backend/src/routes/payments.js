@@ -15,6 +15,7 @@ import {
 import { validateRequest } from "../lib/validation.js";
 import { createCreatePaymentRateLimit } from "../lib/create-payment-rate-limit.js";
 import { createVerifyPaymentRateLimit } from "../lib/rate-limit.js";
+import { createPathPaymentQuoteRateLimit } from "../lib/path-payment-quote-rate-limit.js";
 import { recaptchaMiddleware } from "../lib/recaptcha.js";
 import { sendWebhook, isEventSubscribed } from "../lib/webhooks.js";
 import { sendReceiptEmail } from "../lib/email.js";
@@ -48,6 +49,7 @@ import {
 
 
 const createPaymentRateLimit = createCreatePaymentRateLimit();
+const pathPaymentQuoteRateLimit = createPathPaymentQuoteRateLimit();
 
 const defaultVerifyPaymentRateLimit = createVerifyPaymentRateLimit();
 let supabaseClientPromise;
@@ -1136,6 +1138,7 @@ function createPaymentsRouter({
    */
   router.get(
     "/path-payment-quote/:id",
+    pathPaymentQuoteRateLimit,
     validateUuidParam(),
     validateRequest({ query: pathPaymentQuoteQuerySchema }),
     async (req, res, next) => {
