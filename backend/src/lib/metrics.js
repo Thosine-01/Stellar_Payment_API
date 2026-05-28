@@ -64,6 +64,88 @@ export const pgPoolUtilizationPercent = new client.Gauge({
   help: "Percentage of pool connections in use",
 });
 
+/**
+ * Query Performance Metrics
+ */
+
+export const queryDuration = new client.Histogram({
+  name: "db_query_duration_milliseconds",
+  help: "Database query execution time in milliseconds",
+  labelNames: ["label"],
+  buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
+});
+
+export const queryRetryCount = new client.Counter({
+  name: "db_query_retry_total",
+  help: "Total number of query retry attempts",
+  labelNames: ["label"],
+});
+
+export const slowQueryCount = new client.Counter({
+  name: "db_slow_query_total",
+  help: "Total number of slow queries exceeding threshold",
+  labelNames: ["label", "threshold"],
+});
+
+/**
+ * Transaction Signer Metrics
+ */
+
+export const signatureVerificationTotal = new client.Counter({
+  name: "transaction_signer_verification_total",
+  help: "Total number of transaction signature verifications",
+  labelNames: ["result"], // valid, invalid, error
+});
+
+export const signatureVerificationDuration = new client.Histogram({
+  name: "transaction_signer_verification_duration_seconds",
+  help: "Time taken to verify transaction signature in seconds",
+  labelNames: ["result"],
+  buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+});
+
+export const signatureVerificationReplayAttempts = new client.Counter({
+  name: "transaction_signer_replay_attempts_total",
+  help: "Total number of detected signature replay attempts",
+});
+
+/**
+ * Ledger Monitor Metrics
+ */
+
+export const ledgerMonitorCycleDuration = new client.Histogram({
+  name: "ledger_monitor_cycle_duration_seconds",
+  help: "Time taken for each ledger monitor poll cycle",
+  buckets: [1, 5, 10, 30, 60, 120],
+});
+
+export const ledgerMonitorPaymentsChecked = new client.Counter({
+  name: "ledger_monitor_payments_checked_total",
+  help: "Total number of payments checked by ledger monitor",
+  labelNames: ["result"], // confirmed, failed, pending, skipped
+});
+
+export const ledgerMonitorCircuitBreakerTrips = new client.Counter({
+  name: "ledger_monitor_circuit_breaker_trips_total",
+  help: "Total number of times the circuit breaker was tripped",
+});
+
+/**
+ * Rate Limiting Metrics
+ */
+
+export const rateLimitExceededTotal = new client.Counter({
+  name: "rate_limit_exceeded_total",
+  help: "Total number of rate limit violations",
+  labelNames: ["endpoint", "type"], // endpoint name, type (ip, api_key, merchant)
+});
+
+export const rateLimitRequestsTotal = new client.Counter({
+  name: "rate_limit_requests_total",
+  help: "Total number of requests subject to rate limiting",
+  labelNames: ["endpoint", "type"],
+});
+
 // Register custom metrics
 register.registerMetric(paymentCreatedCounter);
 register.registerMetric(paymentConfirmedCounter);
@@ -73,5 +155,16 @@ register.registerMetric(pgPoolTotalConnections);
 register.registerMetric(pgPoolIdleConnections);
 register.registerMetric(pgPoolWaitingRequests);
 register.registerMetric(pgPoolUtilizationPercent);
+register.registerMetric(queryDuration);
+register.registerMetric(queryRetryCount);
+register.registerMetric(slowQueryCount);
+register.registerMetric(signatureVerificationTotal);
+register.registerMetric(signatureVerificationDuration);
+register.registerMetric(signatureVerificationReplayAttempts);
+register.registerMetric(ledgerMonitorCycleDuration);
+register.registerMetric(ledgerMonitorPaymentsChecked);
+register.registerMetric(ledgerMonitorCircuitBreakerTrips);
+register.registerMetric(rateLimitExceededTotal);
+register.registerMetric(rateLimitRequestsTotal);
 
 export { register };

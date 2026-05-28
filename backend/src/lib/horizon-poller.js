@@ -40,6 +40,9 @@ import { logger } from "./logger.js";
 import {
   paymentConfirmedCounter,
   paymentConfirmationLatency,
+  ledgerMonitorCycleDuration,
+  ledgerMonitorPaymentsChecked,
+  ledgerMonitorCircuitBreakerTrips,
 } from "./metrics.js";
 
 // ── Tuning constants ──────────────────────────────────────────────────────────
@@ -138,6 +141,8 @@ async function pollPendingPayments() {
   if (_running) return; // skip if previous cycle still running
   _running = true;
 
+  const cycleStartTime = Date.now();
+
   try {
     // ── Circuit breaker check ─────────────────────────────────────────────
     if (_circuitBreakerOpenAt > 0) {
@@ -183,6 +188,7 @@ async function pollPendingPayments() {
       // Trip circuit breaker after too many consecutive failures
       if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         _circuitBreakerOpenAt = Date.now();
+        ledgerMonitorCircuitBreakerTrips.inc();
         logger.error(
           { consecutiveFailures: _consecutiveFailures, resetMs: CIRCUIT_BREAKER_RESET_MS },
           "Horizon poller: circuit breaker tripped — pausing polling",
@@ -216,7 +222,7 @@ async function pollPendingPayments() {
     }
 
     // Process each group sequentially, different groups in parallel
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       Array.from(groups.values()).map(async (group) => {
         for (const p of group) {
           await checkPayment(p);
@@ -224,9 +230,18 @@ async function pollPendingPayments() {
       })
     );
 
+    // Record metrics for payment check results
+    results.forEach((result) => {
+      if (result.status === 'rejected') {
+        logger.warn({ err: result.reason }, "Horizon poller: payment group processing failed");
+      }
+    });
+
   } catch (err) {
     logger.warn({ err }, "Horizon poller: unexpected error in poll cycle");
   } finally {
+    const cycleDuration = (Date.now() - cycleStartTime) / 1000;
+    ledgerMonitorCycleDuration.observe(cycleDuration);
     _running = false;
   }
 }
@@ -234,6 +249,8 @@ async function pollPendingPayments() {
 // ── Per-payment check ─────────────────────────────────────────────────────────
 
 async function checkPayment(payment) {
+  const paymentStartTime = Date.now();
+  
   try {
     // Guard: skip if essential fields are missing
     if (!payment.asset || !payment.recipient) {
@@ -241,6 +258,7 @@ async function checkPayment(payment) {
         { paymentId: payment.id },
         "Horizon poller: skipping payment with missing asset or recipient",
       );
+      ledgerMonitorPaymentsChecked.inc({ result: "skipped" });
       return;
     }
 
@@ -262,6 +280,7 @@ async function checkPayment(payment) {
         { err: horizonErr, paymentId: payment.id },
         "Horizon poller: Horizon error during payment lookup — will retry next cycle",
       );
+      ledgerMonitorPaymentsChecked.inc({ result: "skipped" });
       return;
     }
 
@@ -291,6 +310,7 @@ async function checkPayment(payment) {
           },
           "Horizon poller: signature verification failed — skipping payment",
         );
+        ledgerMonitorPaymentsChecked.inc({ result: "skipped" });
         return;
       }
 
@@ -350,6 +370,7 @@ async function checkPayment(payment) {
             { paymentId: payment.id, expected, received },
             "Horizon poller: underpayment detected — marked failed",
           );
+          ledgerMonitorPaymentsChecked.inc({ result: "failed" });
 
           streamManager.notify(payment.id, "payment.failed", {
             status: "failed",
@@ -389,6 +410,7 @@ async function checkPayment(payment) {
             { paymentId: payment.id, expected, received },
             "Horizon poller: overpayment — confirmed with flag",
           );
+          ledgerMonitorPaymentsChecked.inc({ result: "confirmed" });
           streamManager.notify(payment.id, "payment.confirmed", {
             status: "confirmed",
             tx_id: anyPayment.transaction_hash,
@@ -477,6 +499,7 @@ async function checkPayment(payment) {
       { paymentId: payment.id, txHash: match.transaction_hash },
       "Horizon poller: payment confirmed",
     );
+    ledgerMonitorPaymentsChecked.inc({ result: "confirmed" });
 
     // SSE → customer checkout page
     streamManager.notify(payment.id, "payment.confirmed", {
@@ -545,6 +568,7 @@ async function checkPayment(payment) {
   } catch (err) {
     // Non-fatal — log and continue with other payments
     logger.warn({ err, paymentId: payment.id }, "Horizon poller: error checking payment");
+    ledgerMonitorPaymentsChecked.inc({ result: "skipped" });
   }
 }
 
@@ -552,6 +576,77 @@ async function checkPayment(payment) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Validate webhook URL format and security.
+ * Prevents internal network access and ensures HTTPS.
+ * 
+ * @param {string} webhookUrl - The webhook URL to validate
+ * @returns {boolean} True if the URL is valid and safe
+ */
+function isValidWebhookUrl(webhookUrl) {
+  if (!webhookUrl || typeof webhookUrl !== "string") {
+    return false;
+  }
+
+  try {
+    const url = new URL(webhookUrl);
+    
+    // Require HTTPS for security
+    if (url.protocol !== "https:") {
+      logger.warn(
+        { webhookUrl, protocol: url.protocol },
+        "Horizon poller: webhook URL does not use HTTPS",
+      );
+      return false;
+    }
+
+    // Block internal network addresses
+    const hostname = url.hostname.toLowerCase();
+    const internalPatterns = [
+      "localhost",
+      "127.0.0.1",
+      "0.0.0.0",
+      "::1",
+      "10.",
+      "172.16.",
+      "172.17.",
+      "172.18.",
+      "172.19.",
+      "172.20.",
+      "172.21.",
+      "172.22.",
+      "172.23.",
+      "172.24.",
+      "172.25.",
+      "172.26.",
+      "172.27.",
+      "172.28.",
+      "172.29.",
+      "172.30.",
+      "172.31.",
+      "192.168.",
+    ];
+
+    for (const pattern of internalPatterns) {
+      if (hostname === pattern || hostname.startsWith(pattern)) {
+        logger.warn(
+          { webhookUrl, hostname },
+          "Horizon poller: webhook URL points to internal network",
+        );
+        return false;
+      }
+    }
+
+    return true;
+  } catch (err) {
+    logger.warn(
+      { webhookUrl, err: err.message },
+      "Horizon poller: invalid webhook URL format",
+    );
+    return false;
+  }
 }
 
 async function loadMerchantNotificationConfig(merchantId) {
@@ -573,5 +668,19 @@ async function loadMerchantNotificationConfig(merchantId) {
     return null;
   }
 
-  return data ?? null;
+  if (!data) {
+    return null;
+  }
+
+  // Validate webhook URL if present
+  if (data.webhook_url && !isValidWebhookUrl(data.webhook_url)) {
+    logger.warn(
+      { merchantId, webhookUrl: data.webhook_url },
+      "Horizon poller: merchant webhook URL failed validation, skipping webhook delivery",
+    );
+    // Return config but with webhook_url nullified
+    return { ...data, webhook_url: null };
+  }
+
+  return data;
 }

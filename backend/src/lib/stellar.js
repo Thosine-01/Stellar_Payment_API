@@ -1,5 +1,11 @@
 import "dotenv/config";
 import * as StellarSdk from "stellar-sdk";
+import { logger } from "./logger.js";
+import {
+  signatureVerificationTotal,
+  signatureVerificationDuration,
+  signatureVerificationReplayAttempts,
+} from "./metrics.js";
 
 const NETWORK = (process.env.STELLAR_NETWORK || "testnet").toLowerCase();
 const HORIZON_URL = (
@@ -739,8 +745,15 @@ export async function getStellarConfig() {
  */
 export async function verifyTransactionSignature(txHash, options = {}) {
   const { maxRetries = 3, retryDelay = 1000 } = options;
+  const startTime = Date.now();
+  
   if (!txHash || typeof txHash !== "string") {
-    console.error(`verifyTransactionSignature: Invalid input - txHash=${txHash}, type=${typeof txHash}`);
+    logger.error({
+      txHash,
+      type: typeof txHash,
+    }, "verifyTransactionSignature: Invalid input");
+    signatureVerificationTotal.inc({ result: "error" });
+    signatureVerificationDuration.observe({ result: "error" }, (Date.now() - startTime) / 1000);
     return {
       valid: false,
       reason: "Invalid transaction hash provided",
@@ -772,18 +785,27 @@ export async function verifyTransactionSignature(txHash, options = {}) {
       
       if (isTransient && retryCount < maxRetries) {
         const delay = retryDelay * Math.pow(2, retryCount); // Exponential backoff
-        console.warn(`verifyTransactionSignature: Transient error fetching tx ${txHash}, retry ${retryCount + 1}/${maxRetries} after ${delay}ms: ${wrapped.message}`);
+        logger.warn({
+          txHash,
+          retry: retryCount + 1,
+          maxRetries,
+          delayMs: delay,
+          error: wrapped.message,
+        }, "verifyTransactionSignature: Transient error, retrying");
         await new Promise(resolve => setTimeout(resolve, delay));
         retryCount++;
         continue;
       }
       
-      console.error(`verifyTransactionSignature: Failed to fetch tx ${txHash} after ${retryCount} retries: ${wrapped.message}`, {
+      logger.error({
         txHash,
         errorStatus: err?.response?.status,
         errorCode: err?.code,
         retryCount,
-      });
+        error: wrapped.message,
+      }, "verifyTransactionSignature: Failed to fetch transaction");
+      signatureVerificationTotal.inc({ result: "error" });
+      signatureVerificationDuration.observe({ result: "error" }, (Date.now() - startTime) / 1000);
       return {
         valid: false,
         reason: `Failed to fetch transaction from Horizon: ${wrapped.message}`,
@@ -799,11 +821,14 @@ export async function verifyTransactionSignature(txHash, options = {}) {
   try {
     transaction = new StellarSdk.Transaction(tx.envelope_xdr, passphrase);
   } catch (err) {
-    console.error(`verifyTransactionSignature: Failed to parse XDR for tx ${txHash}: ${err.message}`, {
+    logger.error({
       txHash,
       xdrLength: tx.envelope_xdr?.length,
       errorName: err.name,
-    });
+      errorMessage: err.message,
+    }, "verifyTransactionSignature: Failed to parse XDR");
+    signatureVerificationTotal.inc({ result: "error" });
+    signatureVerificationDuration.observe({ result: "error" }, (Date.now() - startTime) / 1000);
     return {
       valid: false,
       reason: `Failed to parse transaction XDR: ${err.message}`,
@@ -815,7 +840,11 @@ export async function verifyTransactionSignature(txHash, options = {}) {
 
   const signatures = transaction.signatures;
   if (!signatures || signatures.length === 0) {
-    console.warn(`verifyTransactionSignature: No signatures found in tx ${txHash}`);
+    logger.warn({
+      txHash,
+    }, "verifyTransactionSignature: No signatures found");
+    signatureVerificationTotal.inc({ result: "invalid" });
+    signatureVerificationDuration.observe({ result: "invalid" }, (Date.now() - startTime) / 1000);
     return {
       valid: false,
       reason: "Transaction envelope contains no signatures",
@@ -836,11 +865,14 @@ export async function verifyTransactionSignature(txHash, options = {}) {
   } catch (err) {
     // Non-fatal: if we cannot load the account we cannot verify weights.
     // Return valid=false so the caller can decide whether to skip or retry.
-    console.warn(`verifyTransactionSignature: Could not load account ${sourceAccountId} for tx ${txHash}: ${err.message}`, {
+    logger.warn({
       txHash,
       sourceAccountId,
       errorStatus: err?.response?.status,
-    });
+      errorMessage: err.message,
+    }, "verifyTransactionSignature: Could not load source account");
+    signatureVerificationTotal.inc({ result: "error" });
+    signatureVerificationDuration.observe({ result: "error" }, (Date.now() - startTime) / 1000);
     return {
       valid: false,
       reason: `Could not load source account for weight verification: ${err.message}`,
@@ -866,6 +898,7 @@ export async function verifyTransactionSignature(txHash, options = {}) {
   let totalWeight = 0;
   let validSignatureCount = 0;
   const usedSigners = new Set(); // Prevent signature replay
+  let replayAttemptsDetected = 0;
 
   for (const decoratedSig of signatures) {
     // hint is the last 4 bytes of the public key — use it to narrow candidates
@@ -873,7 +906,10 @@ export async function verifyTransactionSignature(txHash, options = {}) {
     const sigBytes = decoratedSig.signature();
 
     for (const [publicKey, weight] of signerWeightMap) {
-      if (usedSigners.has(publicKey)) continue;
+      if (usedSigners.has(publicKey)) {
+        replayAttemptsDetected++;
+        continue; // Skip already used signers - replay attempt
+      }
 
       // Quick hint check before expensive crypto
       const keyPair = StellarSdk.Keypair.fromPublicKey(publicKey);
@@ -896,6 +932,16 @@ export async function verifyTransactionSignature(txHash, options = {}) {
     }
   }
 
+  // Log replay attempts for security monitoring
+  if (replayAttemptsDetected > 0) {
+    signatureVerificationReplayAttempts.inc();
+    logger.warn({
+      txHash,
+      replayAttemptsDetected,
+      totalSignatures: signatures.length,
+    }, "verifyTransactionSignature: Signature replay attempts detected");
+  }
+
   // ── Step 5: Check medium threshold ───────────────────────────────────────
   // Payment operations require medium threshold authorisation.
   // A threshold of 0 means any single valid signature suffices.
@@ -903,14 +949,16 @@ export async function verifyTransactionSignature(txHash, options = {}) {
   const thresholdMet = totalWeight >= effectiveThreshold;
 
   if (!thresholdMet) {
-    console.warn(`verifyTransactionSignature: Insufficient weight for tx ${txHash}`, {
+    logger.warn({
       txHash,
       totalWeight,
       requiredThreshold: effectiveThreshold,
       signatureCount: signatures.length,
       validSignatureCount,
       isMultiSig,
-    });
+    }, "verifyTransactionSignature: Insufficient signing weight");
+    signatureVerificationTotal.inc({ result: "invalid" });
+    signatureVerificationDuration.observe({ result: "invalid" }, (Date.now() - startTime) / 1000);
     return {
       valid: false,
       reason: `Insufficient signing weight: accumulated ${totalWeight}, required ${effectiveThreshold} (medium threshold)`,
@@ -920,13 +968,16 @@ export async function verifyTransactionSignature(txHash, options = {}) {
     };
   }
 
-  console.info(`verifyTransactionSignature: Successfully verified tx ${txHash}`, {
+  logger.info({
     txHash,
     totalWeight,
     threshold: effectiveThreshold,
     signatureCount: signatures.length,
     isMultiSig,
-  });
+    durationMs: Date.now() - startTime,
+  }, "verifyTransactionSignature: Successfully verified");
+  signatureVerificationTotal.inc({ result: "valid" });
+  signatureVerificationDuration.observe({ result: "valid" }, (Date.now() - startTime) / 1000);
 
   return {
     valid: true,
