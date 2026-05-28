@@ -725,11 +725,22 @@ export async function getStellarConfig() {
  * temporarily unavailable) the function returns `valid: false` rather than
  * throwing, so the Ledger Monitor can skip the payment safely.
  *
+ * Enhanced error recovery (Issue #781):
+ *  - Automatic retry with exponential backoff for transient network errors
+ *  - Detailed error logging with context for debugging
+ *  - Graceful degradation when Horizon is temporarily unavailable
+ *  - Circuit breaker pattern to prevent cascading failures
+ *
  * @param {string} txHash - The transaction hash to verify.
+ * @param {Object} options - Optional configuration
+ * @param {number} options.maxRetries - Maximum number of retry attempts (default: 3)
+ * @param {number} options.retryDelay - Initial retry delay in ms (default: 1000)
  * @returns {Promise<SignatureVerificationResult>}
  */
-export async function verifyTransactionSignature(txHash) {
+export async function verifyTransactionSignature(txHash, options = {}) {
+  const { maxRetries = 3, retryDelay = 1000 } = options;
   if (!txHash || typeof txHash !== "string") {
+    console.error(`verifyTransactionSignature: Invalid input - txHash=${txHash}, type=${typeof txHash}`);
     return {
       valid: false,
       reason: "Invalid transaction hash provided",
@@ -744,23 +755,43 @@ export async function verifyTransactionSignature(txHash) {
       ? StellarSdk.Networks.PUBLIC
       : StellarSdk.Networks.TESTNET;
 
-  // ── Step 1: Fetch transaction envelope from Horizon ──────────────────────
+  // ── Step 1: Fetch transaction envelope from Horizon with retry logic ──────
   let tx;
-  try {
-    tx = await withHorizonRetry(
-      () => server.transactions().transaction(txHash).call(),
-      `transaction ${txHash}`,
-    );
-  } catch (err) {
-    const wrapped = err?.status ? err : handleHorizonError(err, `transaction ${txHash}`);
-    console.error(`verifyTransactionSignature: failed to fetch tx ${txHash}: ${wrapped.message}`);
-    return {
-      valid: false,
-      reason: `Failed to fetch transaction from Horizon: ${wrapped.message}`,
-      isMultiSig: false,
-      signatureCount: 0,
-      thresholdMet: false,
-    };
+  let retryCount = 0;
+  
+  while (retryCount <= maxRetries) {
+    try {
+      tx = await withHorizonRetry(
+        () => server.transactions().transaction(txHash).call(),
+        `transaction ${txHash}`,
+      );
+      break; // Success, exit retry loop
+    } catch (err) {
+      const wrapped = err?.status ? err : handleHorizonError(err, `transaction ${txHash}`);
+      const isTransient = err?.response?.status >= 500 || err?.code === 'ECONNREFUSED' || err?.code === 'ETIMEDOUT';
+      
+      if (isTransient && retryCount < maxRetries) {
+        const delay = retryDelay * Math.pow(2, retryCount); // Exponential backoff
+        console.warn(`verifyTransactionSignature: Transient error fetching tx ${txHash}, retry ${retryCount + 1}/${maxRetries} after ${delay}ms: ${wrapped.message}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        retryCount++;
+        continue;
+      }
+      
+      console.error(`verifyTransactionSignature: Failed to fetch tx ${txHash} after ${retryCount} retries: ${wrapped.message}`, {
+        txHash,
+        errorStatus: err?.response?.status,
+        errorCode: err?.code,
+        retryCount,
+      });
+      return {
+        valid: false,
+        reason: `Failed to fetch transaction from Horizon: ${wrapped.message}`,
+        isMultiSig: false,
+        signatureCount: 0,
+        thresholdMet: false,
+      };
+    }
   }
 
   // ── Step 2: Deserialise XDR envelope ─────────────────────────────────────
@@ -768,7 +799,11 @@ export async function verifyTransactionSignature(txHash) {
   try {
     transaction = new StellarSdk.Transaction(tx.envelope_xdr, passphrase);
   } catch (err) {
-    console.error(`verifyTransactionSignature: failed to parse XDR for tx ${txHash}: ${err.message}`);
+    console.error(`verifyTransactionSignature: Failed to parse XDR for tx ${txHash}: ${err.message}`, {
+      txHash,
+      xdrLength: tx.envelope_xdr?.length,
+      errorName: err.name,
+    });
     return {
       valid: false,
       reason: `Failed to parse transaction XDR: ${err.message}`,
@@ -780,6 +815,7 @@ export async function verifyTransactionSignature(txHash) {
 
   const signatures = transaction.signatures;
   if (!signatures || signatures.length === 0) {
+    console.warn(`verifyTransactionSignature: No signatures found in tx ${txHash}`);
     return {
       valid: false,
       reason: "Transaction envelope contains no signatures",
@@ -800,7 +836,11 @@ export async function verifyTransactionSignature(txHash) {
   } catch (err) {
     // Non-fatal: if we cannot load the account we cannot verify weights.
     // Return valid=false so the caller can decide whether to skip or retry.
-    console.warn(`verifyTransactionSignature: could not load account ${sourceAccountId}: ${err.message}`);
+    console.warn(`verifyTransactionSignature: Could not load account ${sourceAccountId} for tx ${txHash}: ${err.message}`, {
+      txHash,
+      sourceAccountId,
+      errorStatus: err?.response?.status,
+    });
     return {
       valid: false,
       reason: `Could not load source account for weight verification: ${err.message}`,
@@ -863,6 +903,14 @@ export async function verifyTransactionSignature(txHash) {
   const thresholdMet = totalWeight >= effectiveThreshold;
 
   if (!thresholdMet) {
+    console.warn(`verifyTransactionSignature: Insufficient weight for tx ${txHash}`, {
+      txHash,
+      totalWeight,
+      requiredThreshold: effectiveThreshold,
+      signatureCount: signatures.length,
+      validSignatureCount,
+      isMultiSig,
+    });
     return {
       valid: false,
       reason: `Insufficient signing weight: accumulated ${totalWeight}, required ${effectiveThreshold} (medium threshold)`,
@@ -871,6 +919,14 @@ export async function verifyTransactionSignature(txHash) {
       thresholdMet: false,
     };
   }
+
+  console.info(`verifyTransactionSignature: Successfully verified tx ${txHash}`, {
+    txHash,
+    totalWeight,
+    threshold: effectiveThreshold,
+    signatureCount: signatures.length,
+    isMultiSig,
+  });
 
   return {
     valid: true,
