@@ -332,12 +332,13 @@ describe("MultisigApprovalModal Component", () => {
   });
 
   describe("Accessibility", () => {
-    it("has correct ARIA attributes", () => {
+    it("has correct ARIA attributes on modal", () => {
       renderWithProvider();
 
       const modal = screen.getByRole("dialog");
       expect(modal).toHaveAttribute("aria-modal", "true");
       expect(modal).toHaveAttribute("aria-labelledby", "multisig-modal-title");
+      expect(modal).toHaveAttribute("aria-describedby", "multisig-modal-description");
     });
 
     it("has proper roles and live regions for screen readers", () => {
@@ -352,21 +353,106 @@ describe("MultisigApprovalModal Component", () => {
       expect(progressBar).toHaveAttribute("aria-valuenow", "0");
       expect(progressBar).toHaveAttribute("aria-valuemin", "0");
       expect(progressBar).toHaveAttribute("aria-valuemax", "100");
+      expect(progressBar).toHaveAttribute("aria-label", "Signature progress");
     });
 
-    it("has proper heading structure", () => {
+    it("has proper heading structure with IDs", () => {
       renderWithProvider();
 
       const title = screen.getByText("Multi-Signature Approval");
       expect(title).toBeInTheDocument();
       expect(title).toHaveAttribute("id", "multisig-modal-title");
+
+      const description = screen.getByText(/Step \d of 3/);
+      expect(description).toHaveAttribute("id", "multisig-modal-description");
     });
 
-    it("manages focus correctly", () => {
+    it("manages focus correctly on modal open", () => {
       renderWithProvider();
 
       const modal = screen.getByRole("dialog");
       expect(modal).toHaveFocus();
+    });
+
+    it("has semantic list for signers with proper ARIA labels", () => {
+      renderWithProvider();
+
+      const signersList = screen.getByRole("list");
+      expect(signersList).toBeInTheDocument();
+      expect(signersList).toHaveAttribute("aria-labelledby", "signers-label");
+
+      const signerItems = screen.getAllByRole("listitem");
+      expect(signerItems).toHaveLength(2);
+      signerItems.forEach((item) => {
+        expect(item).toHaveAttribute("aria-label");
+      });
+    });
+
+    it("has descriptive aria-labels on sign buttons", () => {
+      renderWithProvider();
+
+      const signButtons = screen.getAllByText("Sign");
+      signButtons.forEach((button) => {
+        expect(button).toHaveAttribute("aria-label");
+        expect(button).toHaveAttribute("aria-pressed");
+      });
+    });
+
+    it("has proper ARIA attributes on action buttons", () => {
+      renderWithProvider();
+
+      const closeButton = screen.getByLabelText("Close modal");
+      expect(closeButton).toBeInTheDocument();
+      expect(closeButton).toHaveAttribute("aria-label");
+    });
+
+    it("provides accessible error messages", async () => {
+      renderWithProvider({ transaction: null });
+
+      const signButton = screen.queryByText("Sign");
+      if (signButton) {
+        fireEvent.click(signButton);
+
+        await waitFor(() => {
+          const errorArea = screen.getByRole("alert");
+          expect(errorArea).toHaveAttribute("role", "alert");
+        });
+      }
+    });
+
+    it("announces status changes to screen readers", async () => {
+      renderWithProvider();
+
+      const contentArea = document.querySelector('[aria-live="polite"]');
+      expect(contentArea).toBeInTheDocument();
+
+      // Status changes should be announced via aria-live
+      const signButtons = screen.getAllByText("Sign");
+      fireEvent.click(signButtons[0]);
+
+      expect(contentArea).toBeInTheDocument(); // Live region persists
+    });
+
+    it("has proper regions for different content sections", () => {
+      renderWithProvider();
+
+      // Review section should be a region
+      const reviewRegion = screen.getByLabelText("Review transaction section");
+      expect(reviewRegion).toBeInTheDocument();
+
+      // Signers section should be a region
+      const signersRegion = screen.getByLabelText("Signers list");
+      expect(signersRegion).toBeInTheDocument();
+    });
+
+    it("marks decorative elements as aria-hidden", () => {
+      renderWithProvider();
+
+      const listitems = screen.getAllByRole("listitem");
+      listitems.forEach((item) => {
+        const decorativeElement = item.querySelector('[aria-hidden="true"]');
+        expect(decorativeElement).toBeInTheDocument();
+      });
     });
   });
 

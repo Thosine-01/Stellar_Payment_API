@@ -122,12 +122,12 @@ export default function MultisigApprovalModal({
     retryAction();
   }, [retryAction]);
 
-  // Step components
+  // Step components with improved accessibility
   const ReviewStep = () => (
-    <div className="space-y-6">
+    <div className="space-y-6" role="region" aria-label="Review transaction section">
       <div className="text-center">
-        <h3 className="text-xl font-bold text-white">Review Transaction</h3>
-        <p className="mt-2 text-sm text-slate-400">
+        <h3 className="text-xl font-bold text-white" id="review-title">Review Transaction</h3>
+        <p className="mt-2 text-sm text-slate-400" id="review-description">
           Review the transaction details and sign if you approve
         </p>
       </div>
@@ -183,45 +183,54 @@ export default function MultisigApprovalModal({
           </div>
 
           {/* Signers List */}
-          <div className="space-y-2">
-            <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Signers</span>
-            {transaction.signers.map((signer) => (
-              <div 
-                key={signer.id}
-                className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${
-                  signer.hasSigned 
-                    ? "border-mint/30 bg-mint/5" 
-                    : "border-white/10 bg-white/5"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    signer.hasSigned ? "bg-mint" : "bg-slate-500"
-                  }`} />
-                  <div>
-                    <p className="text-sm font-medium text-white">
-                      {signer.name || `Signer ${signer.id.slice(0, 8)}`}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Weight: {signer.weight} • {signer.publicKey.slice(0, 8)}...
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleSign(signer.id)}
-                  disabled={!canSign || signer.hasSigned || isLoading}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+          <div className="space-y-2" role="region" aria-label="Signers list">
+            <span className="text-xs font-medium uppercase tracking-wider text-slate-500" id="signers-label">Signers</span>
+            <ul className="space-y-2" aria-labelledby="signers-label">
+              {transaction.signers.map((signer) => (
+                <li
+                  key={signer.id}
+                  className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${
                     signer.hasSigned
-                      ? "bg-mint/10 text-mint cursor-not-allowed"
-                      : canSign && !isLoading
-                      ? "bg-mint text-black hover:bg-glow"
-                      : "bg-white/10 text-slate-400 cursor-not-allowed"
+                      ? "border-mint/30 bg-mint/5"
+                      : "border-white/10 bg-white/5"
                   }`}
+                  role="listitem"
+                  aria-label={`${signer.name || `Signer ${signer.id.slice(0, 8)}`} - Weight: ${signer.weight} - ${signer.hasSigned ? "Signed" : "Not signed"}`}
                 >
-                  {signer.hasSigned ? "Signed" : isLoading ? "Signing..." : "Sign"}
-                </button>
-              </div>
-            ))}
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-2 h-2 rounded-full ${
+                        signer.hasSigned ? "bg-mint" : "bg-slate-500"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-white">
+                        {signer.name || `Signer ${signer.id.slice(0, 8)}`}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        Weight: {signer.weight} • {signer.publicKey.slice(0, 8)}...
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleSign(signer.id)}
+                    disabled={!canSign || signer.hasSigned || isLoading}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      signer.hasSigned
+                        ? "bg-mint/10 text-mint cursor-not-allowed"
+                        : canSign && !isLoading
+                        ? "bg-mint text-black hover:bg-glow"
+                        : "bg-white/10 text-slate-400 cursor-not-allowed"
+                    }`}
+                    aria-label={`${signer.hasSigned ? "Signed" : "Sign"} transaction as ${signer.name || `signer ${signer.id.slice(0, 8)}`}`}
+                    aria-pressed={signer.hasSigned}
+                  >
+                    {signer.hasSigned ? "Signed" : isLoading ? "Signing..." : "Sign"}
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
 
           {/* Time Remaining */}
@@ -359,15 +368,22 @@ export default function MultisigApprovalModal({
           {/* Modal */}
           <motion.div
             ref={modalRef}
-            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            initial={{ scale: 0.85, opacity: 0, y: 30 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            exit={{ scale: 0.85, opacity: 0, y: 30 }}
+            transition={{
+              duration: 0.4,
+              ease: [0.32, 0.72, 0.0, 1.0], // Custom cubic-bezier for smooth easing
+              type: "spring",
+              stiffness: 300,
+              damping: 30,
+            }}
             className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#050608] shadow-2xl backdrop-blur-xl outline-none"
             tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby="multisig-modal-title"
+            aria-describedby="multisig-modal-description"
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b border-white/10 p-6">
@@ -375,7 +391,7 @@ export default function MultisigApprovalModal({
                 <h2 id="multisig-modal-title" className="text-xl font-bold text-white">
                   Multi-Signature Approval
                 </h2>
-                <p className="text-sm text-slate-400">
+                <p id="multisig-modal-description" className="text-sm text-slate-400">
                   {isExpired ? "Transaction Expired" : `Step ${currentStep === "review" ? "1" : currentStep === "processing" ? "2" : currentStep === "confirm" ? "3" : "1"} of 3`}
                 </p>
               </div>
@@ -392,7 +408,15 @@ export default function MultisigApprovalModal({
             </div>
 
             {/* Content */}
-            <div className="p-6 max-h-[70vh] overflow-y-auto" aria-live="polite">
+            <motion.div
+              className="p-6 max-h-[70vh] overflow-y-auto"
+              aria-live="polite"
+              key={currentStep}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
               {isExpired ? (
                 <div className="text-center space-y-6">
                   <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto">
@@ -416,7 +440,7 @@ export default function MultisigApprovalModal({
               ) : (
                 renderStep()
               )}
-            </div>
+            </motion.div>
 
             {/* Error Display */}
             {error && currentStep !== "error" && (
