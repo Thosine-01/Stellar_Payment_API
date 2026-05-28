@@ -16,6 +16,7 @@ import { useDisplayPreferences } from "@/lib/display-preferences";
 import WebhookHealthIndicator from "@/components/WebhookHealthIndicator";
 import DangerZone from "@/components/DangerZone";
 import { EmailReceiptPreview } from "@/components/EmailReceiptPreview";
+import UserPermissionsManager from "@/components/UserPermissionsManager";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const HEX_COLOR_REGEX = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
@@ -26,7 +27,7 @@ const DEFAULT_BRANDING = {
   logo_url: null as string | null,
 };
 
-type SettingsTab = "api" | "branding" | "display" | "webhooks" | "danger";
+type SettingsTab = "api" | "branding" | "display" | "webhooks" | "permissions" | "danger";
 
 interface WebhookDomainVerification {
   status: "verified" | "unverified";
@@ -194,6 +195,25 @@ const NAV_ITEMS: {
           strokeLinejoin="round"
           strokeWidth={2}
           d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: "permissions",
+    label: "Permissions",
+    icon: (
+      <svg
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a3 3 0 11-6 0 3 3 0 016 0z"
         />
       </svg>
     ),
@@ -1102,6 +1122,11 @@ export default function SettingsPage() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* Permissions Tab */}
+          {activeTab === "permissions" && (
+            <UserPermissionsManager />
           )}
 
           {/* Danger Tab */}

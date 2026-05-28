@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useWallet } from "@/lib/wallet-context";
 import { connectWalletConnect } from "@/lib/wallet-walletconnect";

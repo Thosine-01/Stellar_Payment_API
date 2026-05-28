@@ -12,7 +12,7 @@ import {
 import FirstApiKeyModal from "@/components/FirstApiKeyModal";
 import PaymentMetrics from "@/components/PaymentMetrics";
 import RecentPayments from "@/components/RecentPayments";
-import WithdrawModal from "@/components/WithdrawModal";
+import WithdrawalModal from "@/components/WithdrawalModal";
 import FirstPaymentCelebration from "@/components/FirstPaymentCelebration";
 
 export default function DashboardPage() {
@@ -133,7 +133,7 @@ export default function DashboardPage() {
 
       <FirstApiKeyModal isOpen={isFirstKeyModalOpen} onClose={() => setIsFirstKeyModalOpen(false)} />
       <FirstPaymentCelebration />
-      <WithdrawModal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
+      <WithdrawalModal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
     </div>
   );
 }
