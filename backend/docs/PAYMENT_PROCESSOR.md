@@ -4,7 +4,9 @@ Architecture, granular metrics, and testing guide for the Payment Processor
 module (`src/routes/payments.js` + `src/services/paymentService.js`).
 
 Covers issues **#1086** (end-to-end testing), **#1087** (legacy refactor),
-**#1088** (granular metrics) and **#1089** (load testing).
+**#1088** (granular metrics), **#1089** (load testing), and Payment Processor
+Telemetry: **#1477** (payload sanitization and strict validation), **#1478**
+(alert metrics and health) and **#1479** (retry with exponential backoff).
 
 ---
 

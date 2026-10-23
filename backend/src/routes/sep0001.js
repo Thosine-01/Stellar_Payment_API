@@ -61,6 +61,11 @@ export function resolveMerchantId(req) {
  *         description: Merchant not found
  *       500:
  *         description: Failed to generate stellar.toml
+ *       503:
+ *         description: >
+ *           Merchant lookup kept failing with a transient error after
+ *           automatic retries with exponential backoff (issue #1459).
+ *           Includes a Retry-After header; never cached.
  */
 router.get("/.well-known/stellar.toml", async (req, res, next) => {
   const startedAt = process.hrtime.bigint();
@@ -82,13 +87,9 @@ router.get("/.well-known/stellar.toml", async (req, res, next) => {
     }
     merchantId = resolved.merchantId;
 
-    // Fetch merchant data
-    const { data: merchant, error } = await supabase
-      .from("merchants")
-      .select("id, business_name, email, notification_email, recipient, branding_config")
-      .eq("id", merchantId)
-      .is("deleted_at", null)
-      .maybeSingle();
+    // Fetch merchant data, retrying transient failures with exponential
+    // backoff (issue #1459). Deterministic errors come back on the first try.
+    const { data: merchant, error } = await fetchMerchantForStellarToml(supabase, merchantId);
 
     if (error) {
       finish("lookup_error");
