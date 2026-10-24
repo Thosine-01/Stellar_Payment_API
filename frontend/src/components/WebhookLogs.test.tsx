@@ -22,7 +22,28 @@ vi.mock("@/components/ui/Button", () => ({
 
 vi.mock("./WebhookDetailModal", () => ({
   __esModule: true,
-  default: () => null,
+  default: ({
+    log,
+    onNext,
+    onPrevious,
+    positionLabel,
+  }: {
+    log: { event: string | null } | null;
+    onNext?: () => void;
+    onPrevious?: () => void;
+    positionLabel?: string;
+  }) =>
+    log ? (
+      <div data-testid="detail-stub">
+        <span>{`Viewing ${log.event} (${positionLabel})`}</span>
+        <button type="button" onClick={onPrevious} disabled={!onPrevious}>
+          stub-previous
+        </button>
+        <button type="button" onClick={onNext} disabled={!onNext}>
+          stub-next
+        </button>
+      </div>
+    ) : null,
 }));
 
 vi.mock("@/lib/merchant-store", () => ({
